@@ -1,0 +1,14 @@
+[package]
+name = "im-online-server"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+substrate-api-client = { path = "../substrate-api-client" }
+sp-core = "3.0.0"
+sp-keyring = "3.0.0"
+parity-scale-codec = "2.3.1"
+pallet-facility = {path = "../carbon/node/pallets/facility"}
+pallet-mining = {path = "../carbon/node/pallets/mining"}
+impl-serde = { version = "0.3.0", default-features = false }
+hex = "0.4.0"
