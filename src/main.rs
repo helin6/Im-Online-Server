@@ -6,6 +6,8 @@ use parity_scale_codec::Encode;
 use sp_keyring::AccountKeyring;
 use impl_serde::serialize::from_hex;
 use sp_core::sr25519;
+use log::info;
+use std::time::SystemTime;
 
 #[derive(Debug)]
 pub struct HeartbeatParam {
@@ -21,22 +23,21 @@ pub struct Client {
 
 
 pub fn keep_online() {
+    env_logger::init();
     loop {
-        println!("start submit im-online");
+        info!("start submit im-online");
         let client = Client {
             url: String::from("ws://127.0.0.1:9944"),
             singer: AccountKeyring::Alice.pair(),
         };
 
         let api = Api::<sr25519::Pair>::new(client.url.clone()).expect("create api failed");
-        // .map(|api| api.set_signer(client.singer))
-        // .expect("api create failed");
         if let Some(_signer) = api.signer.clone() {
-            println!("signer exist");
+            info!("signer exist");
         } else {
-            println!("no signer");
+            info!("no signer");
             let heart_param = prepare_params();
-            println!("get param: {:?}", heart_param);
+            info!("get param: {:?}", heart_param);
 
             let xt_d: UncheckedExtrinsicV4<_> =
                 compose_extrinsic!(api, "Mining", "im_online", heart_param.payload, heart_param.pubkey, heart_param.signature);
@@ -45,7 +46,7 @@ pub fn keep_online() {
                 .expect("submit tx failed")
                 .expect("tx on chain failed");
 
-            println!("submit im_online successfully");
+            info!("submit im_online successfully: {:?}", SystemTime::now());
             std::thread::sleep(std::time::Duration::from_secs(6));
         }
     }
@@ -57,14 +58,12 @@ fn prepare_params() -> HeartbeatParam {
         version: 1,
         pk: from_hex(PK_HEX).unwrap()
     };
-    // let report = pallet_facility::AttestationReport::default();
     let proof = from_hex(PK_HEX).unwrap();
     let payload = pallet_mining::OnChainPayload {
         did: did.clone(),
         proof: proof.clone(),
     };
     let signature = sign_payload(payload.clone());
-    // const PUBLIC:&str = "0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d";
     let pubkey: [u8; 32] = [212, 53, 147, 199, 21, 253, 211, 28, 97, 20, 26, 189, 4, 169, 159, 214, 130, 44, 133, 88, 133, 76, 205, 227, 154, 86, 132, 231, 165, 109, 162, 125];
     // let signature = from_hex("0x4c4552e055ee2d9d43ff1ca6126e29cee211bcccec512934c10f85f78663e50dac786fd1f327ca7f5c9c9b78092a398a51b3ae6c46f00c7c353b17146f8e7b8f").unwrap();
     // let signature: [u8; 64] = [76, 69, 82, 224, 85, 238, 45, 157, 67, 255, 28, 166, 18, 110, 41, 206, 226, 17, 188, 204, 236, 81, 41, 52, 193, 15, 133, 247, 134, 99, 229, 13, 172, 120, 111, 209, 243, 39, 202, 127, 92, 156, 155, 120, 9, 42, 57, 138, 81, 179, 174, 108, 70, 240, 12, 124, 53, 59, 23, 20, 111, 142, 123, 143];
@@ -77,7 +76,10 @@ fn prepare_params() -> HeartbeatParam {
 }
 
 fn sign_payload(payload: OnChainPayload) -> [u8; 64] {
-    let pair = AccountKeyring::Alice.pair();
+    let seed = from_hex("0xe5be9a5092b81bca64be81d212e7f2f9eba183bb7a90954f7b76361f6edb5c0a").unwrap();
+    let pair = sp_core::sr25519::Pair::from_seed_slice(&seed[..]).unwrap();
+    info!("signer: {:?}", pair.public());
+    // let pair = AccountKeyring::Alice.pair();
     let tmp = hex::encode(payload.encode());
     let data = tmp.as_str().as_bytes();
     let signature = pair.sign(data);

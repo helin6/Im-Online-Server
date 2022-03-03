@@ -12,3 +12,5 @@ pallet-facility = {path = "../carbon/node/pallets/facility"}
 pallet-mining = {path = "../carbon/node/pallets/mining"}
 impl-serde = { version = "0.3.0", default-features = false }
 hex = "0.4.0"
+log = "0.4.13"
+env_logger = "0.8.2"
