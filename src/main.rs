@@ -1,3 +1,4 @@
+use std::convert::TryInto;
 use pallet_mining::OnChainPayload;
 use substrate_api_client::{
     compose_extrinsic, Api, UncheckedExtrinsicV4, XtStatus, sp_runtime::app_crypto::Pair
@@ -8,6 +9,16 @@ use impl_serde::serialize::from_hex;
 use sp_core::sr25519;
 use log::info;
 use std::time::SystemTime;
+use serde::{Deserialize, Serialize};
+
+#[derive(Default, Serialize, Deserialize, Clone, Debug)]
+pub struct InputInfo {
+    pub version: u16,
+    pub did_pk: String,
+    pub proof: String,
+    pub pubkey: String,
+    pub secret_seed: String
+}
 
 #[derive(Debug)]
 pub struct HeartbeatParam {
@@ -19,6 +30,17 @@ pub struct HeartbeatParam {
 pub struct Client {
     pub url: String,
     pub singer: sp_core::sr25519::Pair,
+}
+
+pub fn load_info_config() -> Result<InputInfo, String> {
+    let content = match std::fs::read_to_string("config.toml") {
+        Ok(content) => content,
+        Err(e) => return Err(e.to_string()),
+    };
+    match toml::from_str::<InputInfo>(&content) {
+        Ok(config) => Ok(config),
+        Err(_) => Err("failed to load config".into()),
+    }
 }
 
 
@@ -53,20 +75,29 @@ pub fn keep_online() {
 }
 
 fn prepare_params() -> HeartbeatParam {
-    const PK_HEX:&str = "0x6b74fb5ed2ffb08de0f539bd2e437c3ba018f266201eaa3254a5919092fa4093";
-    let did = pallet_facility::DIdentity {
-        version: 1,
-        pk: from_hex(PK_HEX).unwrap()
+    let info = match load_info_config() {
+        Ok(info) => info,
+        Err(_) => panic!("read config failed")
     };
-    let proof = from_hex(PK_HEX).unwrap();
+
+    info!("Info from config:{:?}", info);
+
+    let did = pallet_facility::DIdentity {
+        version: info.version,
+        pk: from_hex(&info.did_pk).unwrap()
+    };
+    let proof = from_hex(&info.proof).unwrap();
     let payload = pallet_mining::OnChainPayload {
         did: did.clone(),
         proof: proof.clone(),
     };
-    let signature = sign_payload(payload.clone());
-    let pubkey: [u8; 32] = [212, 53, 147, 199, 21, 253, 211, 28, 97, 20, 26, 189, 4, 169, 159, 214, 130, 44, 133, 88, 133, 76, 205, 227, 154, 86, 132, 231, 165, 109, 162, 125];
-    // let signature = from_hex("0x4c4552e055ee2d9d43ff1ca6126e29cee211bcccec512934c10f85f78663e50dac786fd1f327ca7f5c9c9b78092a398a51b3ae6c46f00c7c353b17146f8e7b8f").unwrap();
-    // let signature: [u8; 64] = [76, 69, 82, 224, 85, 238, 45, 157, 67, 255, 28, 166, 18, 110, 41, 206, 226, 17, 188, 204, 236, 81, 41, 52, 193, 15, 133, 247, 134, 99, 229, 13, 172, 120, 111, 209, 243, 39, 202, 127, 92, 156, 155, 120, 9, 42, 57, 138, 81, 179, 174, 108, 70, 240, 12, 124, 53, 59, 23, 20, 111, 142, 123, 143];
+    let signature = sign_payload(info.secret_seed, payload.clone());
+    let tmp = from_hex(&info.pubkey).unwrap();
+    let mut pubkey = [0u8; 32];
+    for i in 0..tmp.len() {
+        pubkey[i] = tmp[i];
+    }
+
     let param = HeartbeatParam {
         payload,
         pubkey,
@@ -75,11 +106,10 @@ fn prepare_params() -> HeartbeatParam {
     param
 }
 
-fn sign_payload(payload: OnChainPayload) -> [u8; 64] {
-    let seed = from_hex("0xe5be9a5092b81bca64be81d212e7f2f9eba183bb7a90954f7b76361f6edb5c0a").unwrap();
+fn sign_payload(raw_seed: String, payload: OnChainPayload) -> [u8; 64] {
+    let seed = from_hex(raw_seed.as_str()).unwrap();
     let pair = sp_core::sr25519::Pair::from_seed_slice(&seed[..]).unwrap();
     info!("signer: {:?}", pair.public());
-    // let pair = AccountKeyring::Alice.pair();
     let tmp = hex::encode(payload.encode());
     let data = tmp.as_str().as_bytes();
     let signature = pair.sign(data);

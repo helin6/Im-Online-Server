@@ -1456,9 +1456,11 @@ dependencies = [
  "pallet-facility",
  "pallet-mining",
  "parity-scale-codec 2.3.1",
+ "serde",
  "sp-core",
  "sp-keyring",
  "substrate-api-client",
+ "toml",
 ]
 
 [[package]]
