@@ -1,10 +1,8 @@
-use std::convert::TryInto;
 use pallet_mining::OnChainPayload;
 use substrate_api_client::{
     compose_extrinsic, Api, UncheckedExtrinsicV4, XtStatus, sp_runtime::app_crypto::Pair
 };
 use parity_scale_codec::Encode;
-use sp_keyring::AccountKeyring;
 use impl_serde::serialize::from_hex;
 use sp_core::sr25519;
 use log::info;
@@ -17,19 +15,16 @@ pub struct InputInfo {
     pub did_pk: String,
     pub proof: String,
     pub pubkey: String,
-    pub secret_seed: String
+    pub secret_seed: String,
+    pub url: String
 }
 
 #[derive(Debug)]
 pub struct HeartbeatParam {
     payload: OnChainPayload,
     pubkey: [u8; 32],
-    signature: [u8; 64]
-}
-
-pub struct Client {
-    pub url: String,
-    pub singer: sp_core::sr25519::Pair,
+    signature: [u8; 64],
+    url: String
 }
 
 pub fn load_info_config() -> Result<InputInfo, String> {
@@ -43,41 +38,27 @@ pub fn load_info_config() -> Result<InputInfo, String> {
     }
 }
 
-
 pub fn keep_online() {
     env_logger::init();
     loop {
-        info!("start submit im-online");
-        let client = Client {
-            url: String::from("ws://127.0.0.1:9944"),
-            singer: AccountKeyring::Alice.pair(),
-        };
+        let heart_param = prepare_params();
+        info!("get param: {:?}", heart_param);
+        let api = Api::<sr25519::Pair>::new(heart_param.url).expect("create api failed");
+        let xt_d: UncheckedExtrinsicV4<_> =
+            compose_extrinsic!(api, "Mining", "im_online", heart_param.payload, heart_param.pubkey, heart_param.signature);
+        api.send_extrinsic(xt_d.hex_encode(), XtStatus::InBlock)
+            .expect("submit tx failed")
+            .expect("tx on chain failed");
 
-        let api = Api::<sr25519::Pair>::new(client.url.clone()).expect("create api failed");
-        if let Some(_signer) = api.signer.clone() {
-            info!("signer exist");
-        } else {
-            info!("no signer");
-            let heart_param = prepare_params();
-            info!("get param: {:?}", heart_param);
-
-            let xt_d: UncheckedExtrinsicV4<_> =
-                compose_extrinsic!(api, "Mining", "im_online", heart_param.payload, heart_param.pubkey, heart_param.signature);
-
-            api.send_extrinsic(xt_d.hex_encode(), XtStatus::InBlock)
-                .expect("submit tx failed")
-                .expect("tx on chain failed");
-
-            info!("submit im_online successfully: {:?}", SystemTime::now());
-            std::thread::sleep(std::time::Duration::from_secs(6));
-        }
+        info!("submit im_online successfully: {:?}", SystemTime::now());
+        std::thread::sleep(std::time::Duration::from_secs(6));
     }
 }
 
 fn prepare_params() -> HeartbeatParam {
     let info = match load_info_config() {
         Ok(info) => info,
-        Err(_) => panic!("read config failed")
+        Err(_) => panic!("read config filed")
     };
 
     info!("Info from config:{:?}", info);
@@ -97,11 +78,11 @@ fn prepare_params() -> HeartbeatParam {
     for i in 0..tmp.len() {
         pubkey[i] = tmp[i];
     }
-
     let param = HeartbeatParam {
         payload,
         pubkey,
-        signature
+        signature,
+        url: info.url
     };
     param
 }
@@ -109,7 +90,6 @@ fn prepare_params() -> HeartbeatParam {
 fn sign_payload(raw_seed: String, payload: OnChainPayload) -> [u8; 64] {
     let seed = from_hex(raw_seed.as_str()).unwrap();
     let pair = sp_core::sr25519::Pair::from_seed_slice(&seed[..]).unwrap();
-    info!("signer: {:?}", pair.public());
     let tmp = hex::encode(payload.encode());
     let data = tmp.as_str().as_bytes();
     let signature = pair.sign(data);
